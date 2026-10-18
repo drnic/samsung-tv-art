@@ -62,16 +62,16 @@ def cmd_show(args):
 
 
 def prepare_image(path):
-    """Return JPG or PNG bytes and a file type the TV accepts.
+    """Return JPG bytes the TV accepts.
 
-    Converts other formats (WebP, HEIC, ...) to JPG, and scales images that
-    are smaller than the screen up to fit it.
+    Converts every other format to an RGB JPG, because the TV drops the
+    connection on large PNGs with an alpha channel. Scales images that are
+    smaller than the screen up to fit it.
     """
     with Image.open(path) as im:
-        fmt = im.format
         scale = min(SCREEN[0] / im.width, SCREEN[1] / im.height)
-        if fmt in ("JPEG", "PNG") and scale <= 1:
-            return Path(path).read_bytes(), "jpg" if fmt == "JPEG" else "png"
+        if im.format == "JPEG" and im.mode == "RGB" and scale <= 1:
+            return Path(path).read_bytes(), "jpg"
         if scale > 1:
             size = (round(im.width * scale), round(im.height * scale))
             print(f"warning: {path} is {im.width}x{im.height}, scaling up to "

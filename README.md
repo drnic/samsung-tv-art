@@ -51,4 +51,4 @@ The Art Mode channel on this TV firmware does not ask for pairing. If the TV sho
 
 ## Images
 
-The screen is 3840x2160. `frame upload` converts other formats, such as WebP, to JPG. It scales images smaller than the screen up to fit, which makes them soft, so use 3840x2160 sources when you can.
+The screen is 3840x2160. `frame upload` converts every image that is not an RGB JPG, such as WebP or PNG, to JPG. The TV drops the connection on large PNG files with transparency. It scales images smaller than the screen up to fit, which makes them soft, so use 3840x2160 sources when you can.
