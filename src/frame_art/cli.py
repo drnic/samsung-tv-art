@@ -1,6 +1,7 @@
 """Command-line tool for the art on a Samsung The Frame TV."""
 
 import argparse
+import io
 import json
 import os
 import socket
@@ -8,8 +9,10 @@ import sys
 import warnings
 from pathlib import Path
 
+from PIL import Image
 from samsungtvws import SamsungTVWS
 
+SCREEN = (3840, 2160)
 DEFAULT_HOST = "192.168.86.91"
 DEFAULT_MAC = "24:fc:e5:b6:34:19"
 TOKEN_FILE = Path.home() / ".config" / "frame-art" / "token"
@@ -58,11 +61,34 @@ def cmd_show(args):
     emit(connect(args).select_image(args.content_id, show=True))
 
 
+def prepare_image(path):
+    """Return JPG or PNG bytes and a file type the TV accepts.
+
+    Converts other formats (WebP, HEIC, ...) to JPG, and scales images that
+    are smaller than the screen up to fit it.
+    """
+    with Image.open(path) as im:
+        fmt = im.format
+        scale = min(SCREEN[0] / im.width, SCREEN[1] / im.height)
+        if fmt in ("JPEG", "PNG") and scale <= 1:
+            return Path(path).read_bytes(), "jpg" if fmt == "JPEG" else "png"
+        if scale > 1:
+            size = (round(im.width * scale), round(im.height * scale))
+            print(f"warning: {path} is {im.width}x{im.height}, scaling up to "
+                  f"{size[0]}x{size[1]}", file=sys.stderr)
+            im = im.resize(size, Image.LANCZOS)
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=95)
+        return buf.getvalue(), "jpg"
+
+
 def cmd_upload(args):
     art = connect(args)
     content_id = None
     for path in args.files:
-        content_id = art.upload(path, matte=args.matte, portrait_matte=args.matte)
+        data, file_type = prepare_image(path)
+        content_id = art.upload(data, file_type=file_type,
+                                matte=args.matte, portrait_matte=args.matte)
         print(f"{path} -> {content_id}")
     if args.show and content_id:
         art.select_image(content_id, show=True)
@@ -121,7 +147,7 @@ def main():
     p.add_argument("content_id")
     p.set_defaults(func=cmd_show)
 
-    p = sub.add_parser("upload", help="upload JPG or PNG images")
+    p = sub.add_parser("upload", help="upload images (converted to JPG if needed)")
     p.add_argument("files", nargs="+")
     p.add_argument("--matte", default="none", help="e.g. none, shadowbox_polar, modern_navy")
     p.add_argument("--show", action="store_true", help="show the last uploaded image")

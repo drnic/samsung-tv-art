@@ -5,6 +5,7 @@ description = "Manage the art on a Samsung The Frame TV over the local network"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "pillow>=13.0.0",
     "samsungtvws>=3.0.6",
 ]
 

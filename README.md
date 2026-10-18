@@ -51,4 +51,4 @@ The Art Mode channel on this TV firmware does not ask for pairing. If the TV sho
 
 ## Images
 
-The screen is 3840x2160. Use JPG or PNG images at that size for a full-screen picture without a matte.
+The screen is 3840x2160. `frame upload` converts other formats, such as WebP, to JPG. It scales images smaller than the screen up to fit, which makes them soft, so use 3840x2160 sources when you can.
