@@ -65,6 +65,20 @@ The screen is 3840x2160. `frame upload` converts every image that is not an RGB 
 
 If parts of the panel are darker than others, `frame upload --correct` multiplies each image by a correction mask before upload. The mask dims the bright areas of the screen to match the faded areas, so the picture looks even but darker.
 
+### Example
+
+The photos below show a TV with a faded left edge and darker bands on the right. The first photo shows a plain white screen. The second photo shows the same screen with the calibrated mask, after four photos.
+
+| Before | After |
+|--------|-------|
+| ![White screen before correction](docs/before.jpg) | ![White screen after correction](docs/after.jpg) |
+
+This is the mask for that TV, scaled up. Light areas keep their brightness, and dark areas are dimmed to match the faded areas:
+
+![Sample correction mask](docs/sample-mask-preview.png)
+
+The mask file is [`docs/sample-mask.png`](docs/sample-mask.png). It is 192x108 pixels, and the tool stretches it to the screen. It applies only to that TV, so make your own mask for your TV.
+
 ### Calibrate the mask
 
 You make the mask from phone photos of a test card. The card is a white screen with a small black square near each corner and one in the centre.
@@ -86,4 +100,11 @@ uv run frame upload photo.jpg --correct --show
 uv run frame upload photo.jpg --correct --strength 0.6 --show
 ```
 
-The mask is an RGB image at `~/.config/frame-art/correction.png`, where 255 is no change. The tool stretches it to the full screen. Use `--mask` to give a different file. A `--strength` below 1 removes less of the fade but keeps more brightness. With `--correct`, the tool places images that are not 16:9 on a black 3840x2160 canvas, so the mask lines up with the panel.
+The mask is an RGB image at `~/.config/frame-art/correction.png`, where 255 is no change. The tool stretches it to the full screen. Use `--mask` to give a different file.
+
+To use a mask on another computer, copy the mask file into the configuration directory of that computer:
+
+```bash
+mkdir -p ~/.config/frame-art
+cp docs/sample-mask.png ~/.config/frame-art/correction.png
+``` A `--strength` below 1 removes less of the fade but keeps more brightness. With `--correct`, the tool places images that are not 16:9 on a black 3840x2160 canvas, so the mask lines up with the panel.
