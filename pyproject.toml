@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "ifaddr>=0.2.0",
+    "numpy>=2.4.6",
     "pillow>=13.0.0",
     "samsungtvws>=3.0.6",
 ]

@@ -60,3 +60,30 @@ The Art Mode channel on this TV firmware does not ask for pairing. If the TV sho
 ## Images
 
 The screen is 3840x2160. `frame upload` converts every image that is not an RGB JPG, such as WebP or PNG, to JPG. The TV drops the connection on large PNG files with transparency. It scales images smaller than the screen up to fit, which makes them soft, so use 3840x2160 sources when you can.
+
+## Screen fade correction
+
+If parts of the panel are darker than others, `frame upload --correct` multiplies each image by a correction mask before upload. The mask dims the bright areas of the screen to match the faded areas, so the picture looks even but darker.
+
+### Calibrate the mask
+
+You make the mask from phone photos of a test card. The card is a white screen with a small black square near each corner and one in the centre.
+
+1. Run `uv run frame calibrate start`. The TV shows the test card.
+2. Make the room dark. Take a photo of the whole screen, straight on, with all four corner squares in view.
+3. Run `uv run frame calibrate photo <photo.jpg>`. The tool measures the fade, refines the mask, and shows a corrected test card.
+4. Take another photo from the same place, and run step 3 again. Repeat until the screen looks even. Three or four photos are usually enough.
+5. Run `uv run frame calibrate finish` to remove the test card.
+
+The command prints how much darker the dim areas are than the bright areas. If your phone has a manual or pro mode, lock the exposure, because automatic exposure hides part of the fade. The phone lens also darkens or brightens the edges of a photo a little, so a few percent of unevenness can remain.
+
+`frame calibrate start` continues from the saved mask. To start again from no correction, run `uv run frame calibrate start --reset`.
+
+### Upload with the mask
+
+```bash
+uv run frame upload photo.jpg --correct --show
+uv run frame upload photo.jpg --correct --strength 0.6 --show
+```
+
+The mask is an RGB image at `~/.config/frame-art/correction.png`, where 255 is no change. The tool stretches it to the full screen. Use `--mask` to give a different file. A `--strength` below 1 removes less of the fade but keeps more brightness. With `--correct`, the tool places images that are not 16:9 on a black 3840x2160 canvas, so the mask lines up with the panel.
