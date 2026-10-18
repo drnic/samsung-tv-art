@@ -1,0 +1,16 @@
+[project]
+name = "frame-art"
+version = "0.1.0"
+description = "Manage the art on a Samsung The Frame TV over the local network"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "samsungtvws>=3.0.6",
+]
+
+[project.scripts]
+frame = "frame_art.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
