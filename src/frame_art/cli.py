@@ -2,27 +2,46 @@
 
 import argparse
 import io
+import ipaddress
 import json
 import os
 import socket
 import sys
+import urllib.request
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import ifaddr
 from PIL import Image
 from samsungtvws import SamsungTVWS
 
 SCREEN = (3840, 2160)
-DEFAULT_HOST = "192.168.86.91"
-DEFAULT_MAC = "24:fc:e5:b6:34:19"
-TOKEN_FILE = Path.home() / ".config" / "frame-art" / "token"
+CONFIG_DIR = Path.home() / ".config" / "frame-art"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+TOKEN_FILE = CONFIG_DIR / "token"
 
 # The TV uses a self-signed certificate on port 8002.
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 
+def load_config():
+    try:
+        return json.loads(CONFIG_FILE.read_text())
+    except FileNotFoundError:
+        return {}
+
+
+def require_host(args):
+    if not args.host:
+        sys.exit("error: no TV configured. Run `frame discover`, "
+                 "or pass --host or set FRAME_HOST.")
+    return args.host
+
+
 def connect(args):
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    require_host(args)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tv = SamsungTVWS(
         host=args.host,
         port=8002,
@@ -119,21 +138,96 @@ def cmd_artmode(args):
     emit(connect(args).set_artmode(args.state))
 
 
+def tv_info(host, timeout=1):
+    """Return the REST API device info of a Samsung TV, or None."""
+    try:
+        with urllib.request.urlopen(f"http://{host}:8001/api/v2/", timeout=timeout) as r:
+            return json.load(r)["device"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def ssdp_hosts(timeout=2):
+    msg = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n"
+           'MAN: "ssdp:discover"\r\nMX: 1\r\n'
+           "ST: urn:samsung.com:device:RemoteControlReceiver:1\r\n\r\n").encode()
+    hosts = set()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.settimeout(timeout)
+        try:
+            s.sendto(msg, ("239.255.255.250", 1900))
+            while True:
+                hosts.add(s.recvfrom(4096)[1][0])
+        except OSError:
+            pass
+    return hosts
+
+
+def subnet_hosts():
+    """Every address on the local private networks, at most a /24 each."""
+    hosts = set()
+    for adapter in ifaddr.get_adapters():
+        for ip in adapter.ips:
+            if not isinstance(ip.ip, str):
+                continue
+            net = ipaddress.ip_network(f"{ip.ip}/{max(ip.network_prefix, 24)}", strict=False)
+            if net.is_private and not net.is_loopback and net.prefixlen < 31:
+                hosts.update(str(h) for h in net.hosts())
+    return hosts
+
+
+def find_frames():
+    hosts = ssdp_hosts() or subnet_hosts()
+    with ThreadPoolExecutor(64) as pool:
+        infos = pool.map(tv_info, sorted(hosts, key=ipaddress.ip_address))
+    return [i for i in infos if i and i.get("FrameTVSupport") == "true"]
+
+
+def cmd_discover(args):
+    if args.host:
+        info = tv_info(args.host, timeout=args.timeout)
+        if not info:
+            sys.exit(f"error: no Samsung TV answered at {args.host}")
+        frames = [info]
+    else:
+        print("searching the local network...", file=sys.stderr)
+        frames = find_frames()
+    for f in frames:
+        print(f"{f['ip']:<16} {f.get('wifiMac', ''):<18} {f.get('modelName', '')}  {f['name']}")
+    if not frames:
+        sys.exit("error: found no Frame TV. Make sure the TV is on, "
+                 "then run `frame --host <ip> discover`.")
+    if len(frames) > 1:
+        sys.exit("found more than one Frame TV. Run `frame --host <ip> discover` to pick one.")
+    f = frames[0]
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(
+        {"host": f["ip"], "mac": f.get("wifiMac", "").lower(), "name": f["name"]}, indent=2))
+    print(f"saved to {CONFIG_FILE}")
+
+
 def cmd_wake(args):
+    if not args.mac:
+        sys.exit("error: no MAC address. Run `frame discover`, or pass --mac or set FRAME_MAC.")
     mac = bytes.fromhex(args.mac.replace(":", ""))
     packet = b"\xff" * 6 + mac * 16
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         s.sendto(packet, ("255.255.255.255", 9))
-        s.sendto(packet, (args.host, 9))
+        if args.host:
+            s.sendto(packet, (args.host, 9))
     print(f"sent Wake-on-LAN to {args.mac}")
 
 
 def main():
+    config = load_config()
     parser = argparse.ArgumentParser(prog="frame", description=__doc__)
-    parser.add_argument("--host", default=os.environ.get("FRAME_HOST", DEFAULT_HOST))
+    parser.add_argument("--host", default=os.environ.get("FRAME_HOST"))
     parser.add_argument("--timeout", type=int, default=30)
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("discover", help="find the TV on the network and save it")
+    p.set_defaults(func=cmd_discover)
 
     sub.add_parser("info", help="art mode, current image, slideshow").set_defaults(func=cmd_info)
 
@@ -175,10 +269,12 @@ def main():
     p.set_defaults(func=cmd_artmode)
 
     p = sub.add_parser("wake", help="send Wake-on-LAN to the TV")
-    p.add_argument("--mac", default=os.environ.get("FRAME_MAC", DEFAULT_MAC))
+    p.add_argument("--mac", default=os.environ.get("FRAME_MAC", config.get("mac")))
     p.set_defaults(func=cmd_wake)
 
     args = parser.parse_args()
+    if args.func is not cmd_discover:
+        args.host = args.host or config.get("host")
     args.func(args)
 
 

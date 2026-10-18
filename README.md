@@ -2,20 +2,28 @@
 
 A command-line tool that manages the art on a Samsung The Frame TV over the local network. It uses the Art Mode channel of the TV WebSocket API through the [samsungtvws](https://github.com/xchwarze/samsung-tv-ws-api) library.
 
-The TV is a 2022 55-inch The Frame (QA55LS03RAWXXY) at `192.168.86.91`.
-
 ## Setup
+
+Turn on the TV, then run these commands on a computer on the same network:
 
 ```bash
 uv sync
+uv run frame discover
 uv run frame info
 ```
 
-To use another TV, set `FRAME_HOST` and `FRAME_MAC`, or pass `--host`.
+`frame discover` searches the local network for a The Frame TV. It saves the IP address and MAC address of the TV to `~/.config/frame-art/config.json`. If it finds more than one TV, or none, give the IP address yourself:
+
+```bash
+uv run frame --host 192.168.1.50 discover
+```
+
+The `--host` option and the `FRAME_HOST` and `FRAME_MAC` environment variables override the saved configuration. If the TV gets a new IP address, run `frame discover` again. To keep the same address, give the TV a DHCP reservation on your router.
 
 ## Commands
 
 ```bash
+uv run frame discover                      # find the TV and save it
 uv run frame info                          # art mode, current image, slideshow
 uv run frame list                          # all images on the TV
 uv run frame list --category MY-C0002      # your uploaded photos only
